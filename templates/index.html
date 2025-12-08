@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procesador de Pedidos de Venta</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #fafafa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #0a0a0a;
+            line-height: 1.5;
+        }
+        
+        .container {
+            background: #ffffff;
+            padding: 2.5rem;
+            border-radius: 12px;
+            border: 1px solid #e4e4e7;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            max-width: 600px;
+            width: 90%;
+        }
+        
+        .header {
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            color: #0a0a0a;
+            margin-bottom: 0.5rem;
+            font-size: 1.875rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+        
+        .header p {
+            color: #71717a;
+            font-size: 0.875rem;
+            font-weight: 400;
+        }
+        
+        .upload-section {
+            border: 2px dashed #d4d4d8;
+            border-radius: 8px;
+            padding: 3rem 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            background-color: #fafafa;
+        }
+        
+        .upload-section:hover {
+            border-color: #a1a1aa;
+            background-color: #f4f4f5;
+        }
+        
+        .upload-section.drag-over {
+            border-color: #0a0a0a;
+            background-color: #f4f4f5;
+        }
+        
+        .upload-section input[type="file"] {
+            display: none;
+        }
+        
+        .upload-icon {
+            font-size: 2rem;
+            color: #a1a1aa;
+            margin-bottom: 1rem;
+            display: block;
+        }
+        
+        .upload-title {
+            font-size: 1rem;
+            font-weight: 500;
+            color: #0a0a0a;
+            margin-bottom: 0.5rem;
+        }
+        
+        .upload-subtitle {
+            font-size: 0.875rem;
+            color: #71717a;
+            margin-bottom: 1.5rem;
+        }
+        
+        .upload-btn {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .upload-btn:hover {
+            background-color: #18181b;
+        }
+        
+        .file-info {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            background-color: #f4f4f5;
+            border: 1px solid #e4e4e7;
+            border-radius: 6px;
+            display: none;
+            text-align: left;
+        }
+        
+        .file-info-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #71717a;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+        
+        .file-info-name {
+            font-size: 0.875rem;
+            color: #0a0a0a;
+            font-weight: 500;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            margin-top: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .submit-btn:hover:not(:disabled) {
+            background-color: #18181b;
+        }
+        
+        .submit-btn:disabled {
+            background-color: #e4e4e7;
+            color: #a1a1aa;
+            cursor: not-allowed;
+        }
+        
+        .flash-messages {
+            margin-bottom: 1.5rem;
+        }
+        
+        .flash-message {
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            border: 1px solid;
+        }
+        
+        .flash-message.success {
+            background-color: #f0fdf4;
+            color: #15803d;
+            border-color: #bbf7d0;
+        }
+        
+        .flash-message.error {
+            background-color: #fef2f2;
+            color: #dc2626;
+            border-color: #fecaca;
+        }
+        
+        .success-icon {
+            position: relative;
+        }
+        
+        .error-icon {
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Procesador de Pedidos</h1>
+            <p>Convierte tus archivos Excel de pedidos al formato de plantilla</p>
+        </div>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for message in messages %}
+                        <div class="flash-message {{ 'success' if 'exitosamente' in message else 'error' }} {{ 'success-icon' if 'exitosamente' in message else 'error-icon' }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+            <div class="upload-section" onclick="document.getElementById('fileInput').click()" id="uploadSection">
+                <div class="upload-title">Seleccionar archivo Excel</div>
+                <div class="upload-subtitle">Haz clic aquí o arrastra tu archivo de pedidos de venta</div>
+                <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" required>
+                <button type="button" class="upload-btn">
+                    Seleccionar archivo
+                </button>
+                
+                <div class="file-info" id="fileInfo">
+                    <div class="file-info-label">Archivo seleccionado</div>
+                    <div class="file-info-name" id="fileName"></div>
+                </div>
+            </div>
+            
+            <button type="submit" class="submit-btn" id="submitBtn" disabled>
+                Procesar y descargar plantilla
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const submitBtn = document.getElementById('submitBtn');
+        const uploadSection = document.getElementById('uploadSection');
+        
+        fileInput.addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                fileName.textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(2) + ' MB)';
+                fileInfo.style.display = 'block';
+                submitBtn.disabled = false;
+            } else {
+                fileInfo.style.display = 'none';
+                submitBtn.disabled = true;
+            }
+        });
+        
+        // Drag and drop functionality
+        uploadSection.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadSection.classList.add('drag-over');
+        });
+        
+        uploadSection.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadSection.classList.remove('drag-over');
+        });
+        
+        uploadSection.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadSection.classList.remove('drag-over');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].name.match(/\.(xlsx?|xls)$/i)) {
+                fileInput.files = files;
+                const changeEvent = new Event('change');
+                fileInput.dispatchEvent(changeEvent);
+            }
+        });
+        
+        // Form submission feedback
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            submitBtn.innerHTML = 'Procesando...';
+            submitBtn.disabled = true;
+        });
+    </script>
+</body>
+</html>

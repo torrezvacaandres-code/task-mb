@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vista Previa - Mapeo de Campos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .mapping-section {
+            margin-bottom: 2rem;
+        }
+        
+        .mapping-title {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-left: 4px solid #667eea;
+            margin-bottom: 1rem;
+            border-radius: 5px;
+        }
+        
+        .mapping-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+        }
+        
+        .source-field {
+            background: #e3f2fd;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            font-weight: 500;
+            color: #1976d2;
+        }
+        
+        .arrow {
+            font-size: 1.5rem;
+            color: #667eea;
+            text-align: center;
+        }
+        
+        .target-field {
+            background: #e8f5e8;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            font-weight: 500;
+            color: #2e7d2e;
+        }
+        
+        .back-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 2rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .back-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 2rem;
+        }
+        
+        .example-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        
+        .example-table th,
+        .example-table td {
+            border: 1px solid #dee2e6;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        
+        .example-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .example-table td {
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Vista Previa del Mapeo de Campos</h1>
+            <p>Cómo se transforman los datos del Excel de pedidos al formato de plantilla</p>
+        </div>
+        
+        <div class="content">
+            <div class="mapping-section">
+                <div class="mapping-title">
+                    <h3>🏢 Información del Cliente</h3>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Cliente</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">CLIENTE + RAZON</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Sucursal</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">CIUDAD</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">NIT/CI</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">CLIENTE (código)</div>
+                </div>
+            </div>
+            
+            <div class="mapping-section">
+                <div class="mapping-title">
+                    <h3>📦 Información del Producto</h3>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Líneas del pedido/Producto</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">CODIGO</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Líneas del pedido/Descripción</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">DESCRIPCION</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Líneas del pedido/Cantidad</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">Cantidad</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Líneas del pedido/Precio unidad</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">P.LISTA FARMACIA Bs.</div>
+                </div>
+            </div>
+            
+            <div class="mapping-section">
+                <div class="mapping-title">
+                    <h3>💰 Información Financiera</h3>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Cantidad × Precio unidad</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">Valor del pedido Bs.</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Condiciones de pago</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">Dias de credito</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Modo de pago</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">Observaciones</div>
+                </div>
+            </div>
+            
+            <div class="mapping-section">
+                <div class="mapping-title">
+                    <h3>📅 Información de Fechas</h3>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Fecha orden</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">FECHA pedido + Fecha de factura</div>
+                </div>
+                
+                <div class="mapping-grid">
+                    <div class="source-field">Fecha orden + Días crédito</div>
+                    <div class="arrow">→</div>
+                    <div class="target-field">Fecha de vencimiento del pago</div>
+                </div>
+            </div>
+            
+            <div class="mapping-section">
+                <div class="mapping-title">
+                    <h3>📋 Ejemplo de Transformación</h3>
+                </div>
+                
+                <table class="example-table">
+                    <thead>
+                        <tr>
+                            <th>Campo Origen</th>
+                            <th>Valor Ejemplo</th>
+                            <th>Campo Destino</th>
+                            <th>Valor Procesado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Cliente</td>
+                            <td>[VS0001] FARMACORP S.A.</td>
+                            <td>CLIENTE</td>
+                            <td>VS0001</td>
+                        </tr>
+                        <tr>
+                            <td>Cliente</td>
+                            <td>[VS0001] FARMACORP S.A.</td>
+                            <td>RAZON</td>
+                            <td>FARMACORP S.A.</td>
+                        </tr>
+                        <tr>
+                            <td>Líneas del pedido/Producto</td>
+                            <td>[055490] ACTIZIM CAJA X 6</td>
+                            <td>CODIGO</td>
+                            <td>055490</td>
+                        </tr>
+                        <tr>
+                            <td>Líneas del pedido/Cantidad</td>
+                            <td>30</td>
+                            <td>Cantidad</td>
+                            <td>30</td>
+                        </tr>
+                        <tr>
+                            <td>Líneas del pedido/Precio unidad</td>
+                            <td>47.0</td>
+                            <td>P.LISTA FARMACIA Bs.</td>
+                            <td>47.0</td>
+                        </tr>
+                        <tr>
+                            <td>Cantidad × Precio</td>
+                            <td>30 × 47.0</td>
+                            <td>Valor del pedido Bs.</td>
+                            <td>1410.0</td>
+                        </tr>
+                        <tr>
+                            <td>Condiciones de pago</td>
+                            <td>15 Días</td>
+                            <td>Dias de credito</td>
+                            <td>15</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="note">
+                <strong>📝 Nota:</strong> Los campos que no tienen equivalente en el archivo Excel original se llenarán con valores por defecto o se dejarán vacíos. 
+                El sistema genera automáticamente números de factura, calcula totales y fechas de vencimiento.
+            </div>
+            
+            <a href="/" class="back-btn">← Volver al Procesador</a>
+        </div>
+    </div>
+</body>
+</html>

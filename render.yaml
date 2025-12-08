@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: pedidos-processor
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+    scaling:
+      minInstances: 1
+      maxInstances: 1
