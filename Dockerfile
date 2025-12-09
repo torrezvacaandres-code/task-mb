@@ -38,7 +38,7 @@ EXPOSE $PORT
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:$PORT/health')" || exit 1
+  CMD python -c "import http.client, os; port = int(os.environ.get('PORT', 5000)); conn = http.client.HTTPConnection('localhost', port); conn.request('GET', '/health'); r = conn.getresponse(); exit(0 if r.status == 200 else 1)" || exit 1
 
 # Run the application
 CMD gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60 app:app
