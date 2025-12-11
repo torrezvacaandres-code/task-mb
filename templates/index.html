@@ -203,8 +203,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Procesador de Pedidos</h1>
-            <p>Convierte tus archivos Excel de pedidos al formato de plantilla</p>
+            <h1>Procesador de Archivos</h1>
+            <p>Extrae los campos: NIT, DESCRIPCION, Detalle, fecha de vencimiento y LOTE</p>
         </div>
         
         {% with messages = get_flashed_messages() %}
@@ -222,7 +222,7 @@
         <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
             <div class="upload-section" onclick="document.getElementById('fileInput').click()" id="uploadSection">
                 <div class="upload-title">Seleccionar archivo Excel</div>
-                <div class="upload-subtitle">Haz clic aquí o arrastra tu archivo de pedidos de venta</div>
+                <div class="upload-subtitle">Haz clic aquí o arrastra tu archivo para extraer los campos: NIT, DESCRIPCION, Detalle, fecha de vencimiento y LOTE</div>
                 <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" required>
                 <button type="button" class="upload-btn">
                     Seleccionar archivo
@@ -235,7 +235,7 @@
             </div>
             
             <button type="submit" class="submit-btn" id="submitBtn" disabled>
-                Procesar y descargar plantilla
+                Extraer campos y descargar
             </button>
         </form>
     </div>

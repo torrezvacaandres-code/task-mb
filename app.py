@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import io
 import zipfile
 from pathlib import Path
+import re
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -26,114 +27,278 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def encontrar_columna(df, posibles_nombres):
+    """
+    Busca una columna en el DataFrame por diferentes nombres posibles (case-insensitive)
+    """
+    # Normalizar nombres de columnas del DataFrame
+    columnas_normalizadas = {col.strip().upper(): col for col in df.columns}
+    
+    for nombre in posibles_nombres:
+        nombre_normalizado = nombre.strip().upper()
+        # Buscar coincidencia exacta
+        if nombre in df.columns:
+            return nombre
+        # Buscar coincidencia normalizada
+        if nombre_normalizado in columnas_normalizadas:
+            return columnas_normalizadas[nombre_normalizado]
+        # Buscar coincidencia parcial
+        for col in df.columns:
+            if nombre_normalizado in col.strip().upper() or col.strip().upper() in nombre_normalizado:
+                return col
+    return None
+
+def extraer_lote_de_texto(texto):
+    """
+    Extrae el número de lote de un texto que contiene "LOTE: XXXXX"
+    Si hay múltiples lotes, devuelve el primero encontrado
+    """
+    if not texto or pd.isna(texto):
+        return ""
+    
+    texto_str = str(texto)
+    # Buscar patrones como "LOTE: 2516172" o "LOTE:2516172"
+    # Ordenados de más específico a menos específico
+    patrones = [
+        r'LOTE\s*:\s*(\d{7,})',  # Lotes de 7 o más dígitos (más común)
+        r'LOTE\s*:\s*(\d+)',     # Cualquier número después de LOTE:
+        r'LOTE\s*[:\-]\s*(\d+)', # Con guión o dos puntos
+        r'LOT\s*:\s*(\d+)',      # Sin la E
+        r'LOTE\s+(\d+)',         # Con espacio sin dos puntos
+        r'LOTE\s*:\s*(\d{4,})',  # Al menos 4 dígitos
+    ]
+    
+    for patron in patrones:
+        matches = re.findall(patron, texto_str, re.IGNORECASE)
+        if matches:
+            # Devolver el primer lote encontrado (el más largo si hay varios)
+            lotes_encontrados = [m for m in matches if len(m) >= 4]  # Al menos 4 dígitos
+            if lotes_encontrados:
+                return max(lotes_encontrados, key=len)  # Devolver el más largo
+            return matches[0]
+    
+    return ""
+
 def mapear_pedidos_a_plantilla(archivo_excel):
     """
-    Convierte los datos del Excel de pedidos al formato de la plantilla
+    Extrae solo los campos: NIT, DESCRIPCION, Detalle, fecha de vencimiento, LOTE
     """
     try:
-        # Leer el archivo Excel de pedidos
-        df_pedidos = pd.read_excel(archivo_excel, sheet_name='Sheet1')
+        # Leer el archivo Excel
+        df_pedidos = pd.read_excel(archivo_excel, sheet_name=0)  # Primera hoja
         
-        # Limpiar datos - eliminar filas de encabezado
-        df_pedidos = df_pedidos[df_pedidos['Cliente'].notna() & 
-                               (df_pedidos['Cliente'] != 'noviembre 2025 (26)') &
-                               (df_pedidos['Cliente'] != '21 nov. 2025 (26)')]
+        # Debug: mostrar las columnas encontradas
+        print(f"Columnas encontradas en el archivo: {list(df_pedidos.columns)}")
         
-        # Filtrar solo las filas con productos
-        df_productos = df_pedidos[df_pedidos['Líneas del pedido/Producto'].notna()].copy()
+        # Buscar columnas por diferentes nombres posibles (con búsqueda más flexible)
+        col_nit = encontrar_columna(df_pedidos, ['NIT/CI:', 'NIT/CI', 'NIT', 'Nit', 'nit', 'NIT/CI/CE', 'NIT/CI/CEX', 'NIT CI'])
+        col_descripcion = encontrar_columna(df_pedidos, ['DESCRIPCION', 'Descripción', 'descripcion', 'DESCRIPCIÓN', 
+                                                          'Líneas del pedido/Descripción', 'Producto', 'Descripcion',
+                                                          'DESCRIPCION DEL PRODUCTO'])
+        col_detalle = encontrar_columna(df_pedidos, ['Detalle', 'detalle', 'DETALLE', 'Términos y condiciones', 
+                                                      'Observaciones', 'Notas', 'Comentarios', 'DETALLE DEL PEDIDO'])
+        col_fecha_vencimiento = encontrar_columna(df_pedidos, ['fecha de vencimiento', 'Fecha de vencimiento', 
+                                                               'FECHA DE VENCIMIENTO', 'Fecha Vencimiento',
+                                                               'Fecha de vencimiento del pago', 'Vencimiento',
+                                                               'FECHA VENCIMIENTO'])
+        col_lote = encontrar_columna(df_pedidos, ['LOTE', 'Lote', 'lote', 'LOT', 'Número de lote', 'Nro Lote',
+                                                   'NUMERO DE LOTE', 'LOTE NUMERO'])
         
-        if df_productos.empty:
-            return None, "No se encontraron productos en el archivo"
+        # Si no encontramos NIT, intentar buscar en la primera columna o columnas numéricas
+        if not col_nit and len(df_pedidos.columns) > 0:
+            # Buscar en todas las columnas que puedan ser NIT
+            for col in df_pedidos.columns:
+                col_upper = col.upper().strip()
+                # Si el nombre de la columna es muy corto o parece un código
+                if len(col_upper) <= 3 or col_upper in ['NIT', 'A', 'B', 'C', 'D', 'E']:
+                    # Verificar si contiene valores numéricos
+                    if df_pedidos[col].dtype in ['int64', 'float64']:
+                        col_nit = col
+                        break
+                    # O si la primera columna no es descripción ni detalle
+                    elif col == df_pedidos.columns[0] and col != col_descripcion and col != col_detalle:
+                        col_nit = col
+                        break
         
-        # Crear DataFrame con la estructura de la plantilla
+        # Si no encontramos fecha de vencimiento directamente, intentamos calcularla
+        col_fecha_pedido = encontrar_columna(df_pedidos, ['Fecha orden', 'Fecha', 'FECHA', 'Fecha pedido', 
+                                                          'Fecha de pedido', 'FECHA pedido'])
+        col_dias_credito = encontrar_columna(df_pedidos, ['Dias de credito', 'Días de crédito', 'Días crédito',
+                                                          'Condiciones de pago', 'Dias credito'])
+        
+        # Debug: mostrar qué columnas se encontraron
+        print(f"Columnas disponibles: {list(df_pedidos.columns)}")
+        print(f"NIT encontrado en columna: {col_nit}")
+        print(f"DESCRIPCION encontrada en columna: {col_descripcion}")
+        print(f"Detalle encontrado en columna: {col_detalle}")
+        print(f"Fecha vencimiento encontrada en columna: {col_fecha_vencimiento}")
+        print(f"LOTE encontrado en columna: {col_lote}")
+        
+        # Crear lista para almacenar los datos
         plantilla_data = []
         
-        for idx, row in df_productos.iterrows():
-            # Extraer información del cliente
-            cliente_info = row['Cliente']
-            codigo_cliente = ""
-            nombre_cliente = ""
+        # Procesar cada fila
+        for idx, row in df_pedidos.iterrows():
+            # Extraer NIT - intentar de múltiples formas
+            nit = ""
+            if col_nit:
+                nit_val = row[col_nit]
+                if pd.notna(nit_val):
+                    # Convertir a string y limpiar
+                    nit = str(nit_val).strip()
+                    # Limpiar el NIT si tiene formato extraño
+                    nit = nit.replace('nan', '').replace('NaN', '').replace('None', '')
+                    # Remover puntos finales si los hay (como "NIT/CI:")
+                    nit = nit.rstrip(':').strip()
+                    # Si es un número, mantenerlo como string sin decimales
+                    try:
+                        if '.' in nit:
+                            nit_float = float(nit)
+                            if nit_float.is_integer():
+                                nit = str(int(nit_float))
+                        elif nit.replace('-', '').replace(' ', '').isdigit():
+                            nit = nit  # Mantener como está si es solo dígitos
+                    except:
+                        pass
+                # Debug para ver qué valor tiene el NIT
+                if not nit:
+                    print(f"Fila {idx}: NIT valor original: {nit_val}, tipo: {type(nit_val)}")
+            # Si aún no hay NIT, buscar en otras columnas
+            if not nit:
+                # Buscar en la primera columna si no es descripción ni detalle
+                if len(df_pedidos.columns) > 0:
+                    primera_col = df_pedidos.columns[0]
+                    if primera_col != col_descripcion and primera_col != col_detalle and primera_col != col_nit:
+                        primer_val = row[primera_col]
+                        if pd.notna(primer_val):
+                            primer_str = str(primer_val).strip()
+                            # Si parece un número o código, usarlo como NIT
+                            if primer_str.replace('.', '').replace('-', '').replace(' ', '').isdigit():
+                                nit = primer_str
+                # Si aún no hay NIT, buscar en todas las columnas numéricas
+                if not nit:
+                    for col in df_pedidos.columns:
+                        if col not in [col_descripcion, col_detalle, col_fecha_vencimiento, col_lote]:
+                            val = row[col]
+                            if pd.notna(val):
+                                val_str = str(val).strip()
+                                # Si es un número entero corto (posible NIT)
+                                if val_str.replace('.', '').replace('-', '').isdigit() and len(val_str.replace('.', '').replace('-', '')) <= 15:
+                                    nit = val_str.replace('.0', '').replace('.', '')
+                                    break
             
-            if pd.notna(cliente_info) and '[' in str(cliente_info):
-                try:
-                    codigo_cliente = cliente_info.split(']')[0].replace('[', '')
-                    nombre_cliente = cliente_info.split('] ')[1] if '] ' in cliente_info else cliente_info
-                except:
-                    nombre_cliente = str(cliente_info)
-            else:
-                nombre_cliente = str(cliente_info) if pd.notna(cliente_info) else ""
+            # Extraer DESCRIPCION
+            descripcion = ""
+            if col_descripcion:
+                desc_val = row[col_descripcion]
+                if pd.notna(desc_val):
+                    descripcion = str(desc_val).strip()
             
-            # Extraer código y descripción del producto
-            producto_info = row['Líneas del pedido/Producto']
-            codigo_producto = ""
-            if pd.notna(producto_info) and '[' in str(producto_info):
-                try:
-                    codigo_producto = producto_info.split(']')[0].replace('[', '')
-                except:
-                    codigo_producto = str(producto_info)
+            # Extraer Detalle
+            detalle = ""
+            if col_detalle:
+                det_val = row[col_detalle]
+                if pd.notna(det_val):
+                    detalle = str(det_val).strip()
             
-            # Calcular valores
-            cantidad = row['Líneas del pedido/Cantidad'] if pd.notna(row['Líneas del pedido/Cantidad']) else 0
-            precio_unitario = row['Líneas del pedido/Precio unidad'] if pd.notna(row['Líneas del pedido/Precio unidad']) else 0
-            valor_total = cantidad * precio_unitario
+            # Extraer o calcular fecha de vencimiento
+            fecha_vencimiento = ""
+            if col_fecha_vencimiento:
+                fecha_val = row[col_fecha_vencimiento]
+                if pd.notna(fecha_val):
+                    if isinstance(fecha_val, datetime):
+                        fecha_vencimiento = fecha_val.strftime('%d/%m/%Y')
+                    elif isinstance(fecha_val, pd.Timestamp):
+                        fecha_vencimiento = fecha_val.strftime('%d/%m/%Y')
+                    else:
+                        fecha_str = str(fecha_val).strip()
+                        # Intentar parsear si es una fecha en texto
+                        try:
+                            fecha_parsed = pd.to_datetime(fecha_str, dayfirst=True)
+                            fecha_vencimiento = fecha_parsed.strftime('%d/%m/%Y')
+                        except:
+                            fecha_vencimiento = fecha_str
+            # Si no hay fecha de vencimiento directa, calcularla
+            if not fecha_vencimiento:
+                if col_fecha_pedido and col_dias_credito:
+                    # Calcular fecha de vencimiento desde fecha pedido y días crédito
+                    fecha_pedido = row[col_fecha_pedido]
+                    dias_credito = 0
+                    
+                    if pd.notna(fecha_pedido):
+                        if not isinstance(fecha_pedido, datetime):
+                            try:
+                                fecha_pedido = pd.to_datetime(fecha_pedido)
+                            except:
+                                fecha_pedido = None
+                        
+                        if fecha_pedido and pd.notna(row[col_dias_credito]):
+                            cond_pago = str(row[col_dias_credito])
+                            # Buscar días en el texto (ej: "15 días", "30 Días")
+                            if 'días' in cond_pago.lower() or 'dias' in cond_pago.lower():
+                                try:
+                                    dias_credito = int(''.join(filter(str.isdigit, cond_pago)))
+                                except:
+                                    dias_credito = 0
+                            else:
+                                try:
+                                    dias_credito = int(row[col_dias_credito])
+                                except:
+                                    dias_credito = 0
+                        
+                        if fecha_pedido and dias_credito > 0:
+                            fecha_vencimiento = (fecha_pedido + timedelta(days=dias_credito)).strftime('%d/%m/%Y')
+                        elif fecha_pedido:
+                            # Si hay fecha pero no días, usar fecha pedido como vencimiento
+                            fecha_vencimiento = fecha_pedido.strftime('%d/%m/%Y')
             
-            # Fecha de pedido
-            fecha_pedido = row['Fecha orden'] if pd.notna(row['Fecha orden']) else datetime.now()
+            # Extraer LOTE - SIEMPRE intentar extraerlo de la descripción primero
+            lote = ""
+            # Primero intentar extraer de la descripción (más confiable)
+            if descripcion:
+                lote = extraer_lote_de_texto(descripcion)
+                # Debug para ver si se encontró el lote
+                if not lote and idx < 3:  # Solo para las primeras 3 filas
+                    print(f"Fila {idx}: No se encontró LOTE en descripción: {descripcion[:100]}")
             
-            # Días de crédito (extraer de condiciones de pago)
-            condiciones_pago = row['Condiciones de pago'] if pd.notna(row['Condiciones de pago']) else ""
-            dias_credito = 0
-            if 'días' in str(condiciones_pago).lower():
-                try:
-                    dias_credito = int(''.join(filter(str.isdigit, str(condiciones_pago))))
-                except:
-                    dias_credito = 15  # Default
+            # Si no se encontró en la descripción, intentar de columna dedicada
+            if not lote and col_lote:
+                lote_val = row[col_lote]
+                if pd.notna(lote_val):
+                    lote_temp = str(lote_val).strip()
+                    lote_temp = lote_temp.replace('nan', '').replace('NaN', '').replace('None', '')
+                    if lote_temp and lote_temp.isdigit():
+                        lote = lote_temp
             
-            # Fecha de vencimiento
-            fecha_vencimiento = fecha_pedido + timedelta(days=dias_credito) if isinstance(fecha_pedido, datetime) else ""
-            
-            # Crear registro para la plantilla
-            registro_plantilla = {
-                'Factura': f"FACT-{idx+1:04d}",  # Generar número de factura
-                'Fecha de factura': fecha_pedido.strftime('%d/%m/%Y') if isinstance(fecha_pedido, datetime) else "",
-                'N° PEDIDO': f"PED-{idx+1:04d}",
-                'FECHA pedido': fecha_pedido.strftime('%d/%m/%Y') if isinstance(fecha_pedido, datetime) else "",
-                'TIPO': "VENTA",
-                'CLIENTE': codigo_cliente,
-                'RAZON': nombre_cliente,
-                'CIUDAD': row['Sucursal'] if pd.notna(row['Sucursal']) else "",
-                'ITEM': idx + 1,
-                'CODIGO': codigo_producto,
-                'MARCA': "",  # No disponible en los datos originales
-                'DESCRIPCION': row['Líneas del pedido/Descripción'] if pd.notna(row['Líneas del pedido/Descripción']) else "",
-                'PRINCIPIO ACTIVO': "",  # No disponible en los datos originales
-                'PRESENTACION': "",  # No disponible en los datos originales
-                'P.LISTA FARMACIA Bs.': precio_unitario,
-                'Cantidad': cantidad,
-                'Valor del pedido Bs.': valor_total,
-                'descuento': 0,  # No especificado en los datos originales
-                'Neto de desc =Total factura': valor_total,
-                'Detalle': row['Términos y condiciones'] if pd.notna(row['Términos y condiciones']) else "",
-                'Mes de facturacion': fecha_pedido.strftime('%m/%Y') if isinstance(fecha_pedido, datetime) else "",
-                'Dias de credito': dias_credito,
-                'Fecha de vencimiento del pago': fecha_vencimiento.strftime('%d/%m/%Y') if isinstance(fecha_vencimiento, datetime) else "",
-                'CxC (pago realizado)': "",
-                'CxC Saldo pendiente de pago': valor_total,  # Asumiendo que no está pagado
-                'Fecha de pago efectiva': "",
-                'Observaciones': row['Modo de pago'] if pd.notna(row['Modo de pago']) else "",
-                'fecha de vencimiento': fecha_vencimiento.strftime('%d/%m/%Y') if isinstance(fecha_vencimiento, datetime) else "",
-                'LOTE': "",  # Podría extraerse de la descripción si está disponible
+            # Crear registro solo con los campos solicitados
+            registro = {
+                'NIT': nit,
+                'DESCRIPCION': descripcion,
+                'Detalle': detalle,
+                'fecha de vencimiento': fecha_vencimiento,
+                'LOTE': lote
             }
             
-            plantilla_data.append(registro_plantilla)
+            plantilla_data.append(registro)
         
-        # Crear DataFrame final
+        # Crear DataFrame final solo con los campos solicitados
         df_plantilla = pd.DataFrame(plantilla_data)
+        
+        # Eliminar filas completamente vacías
+        df_plantilla = df_plantilla.dropna(how='all')
+        
+        # Eliminar filas donde todos los campos están vacíos o son solo espacios
+        df_plantilla = df_plantilla[df_plantilla.astype(str).apply(lambda x: x.str.strip()).ne('').any(axis=1)]
+        
+        if df_plantilla.empty:
+            return None, "No se encontraron datos en el archivo"
         
         return df_plantilla, None
         
     except Exception as e:
-        return None, f"Error al procesar el archivo: {str(e)}"
+        import traceback
+        error_detalle = f"Error al procesar el archivo: {str(e)}\n{traceback.format_exc()}"
+        return None, error_detalle
 
 @app.route('/')
 def index():
@@ -165,7 +330,7 @@ def upload_file():
             
             # Guardar el resultado
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f'plantilla_llena_{timestamp}.csv'
+            output_filename = f'campos_extraidos_{timestamp}.csv'
             output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
             
             # Guardar con el formato correcto (separado por punto y coma)
@@ -174,7 +339,7 @@ def upload_file():
             # Limpiar archivo temporal
             os.remove(filepath)
             
-            flash(f'Archivo procesado exitosamente. {len(df_resultado)} registros generados.')
+            flash(f'Archivo procesado exitosamente. {len(df_resultado)} registros con los campos: NIT, DESCRIPCION, Detalle, fecha de vencimiento y LOTE.')
             return send_file(output_path, as_attachment=True, download_name=output_filename)
             
         except Exception as e:
